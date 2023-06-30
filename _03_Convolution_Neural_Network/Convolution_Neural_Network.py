@@ -1,6 +1,8 @@
 # 在该文件NeuralNetwork类中定义你的模型 
 # 在自己电脑上训练好模型，保存参数，在这里读取模型参数（不要使用JIT读取），在main中返回读取了模型参数的模型
+
 import os
+import torch.nn.functional as F
 
 os.system("sudo pip3 install torch")
 os.system("sudo pip3 install torchvision")
@@ -9,15 +11,37 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
-import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
-# 3x3 卷积定义
+class Digit(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1=nn.Conv2d(3,10,3)
+        self.conv2=nn.Conv2d(10,20,1)
+        self.fc1=nn.Linear(20*10*10,500)
+        self.fc2=nn.Linear(500,10)
+
+    def forward(self,x):
+        input_size=x.size(0)
+        x=self.conv1(x)
+        x=F.relu(x)
+        x=F.max_pool2d(x,3,3)
+
+        x=self.conv2(x)
+        x=F.relu(x)
+        x=x.view(input_size,-1)
+
+        x=self.fc1(x)
+        x=F.relu(x)
+        x=self.fc2(x)
+        output=F.log_softmax(x,dim=1)
+        return output
+
+
 def conv3x3(in_channels, out_channels, stride=1):
     return nn.Conv2d(in_channels, out_channels, kernel_size=3,
                      stride=stride, padding=1, bias=False)
 
-# Resnet 的残差块
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(ResidualBlock, self).__init__()
@@ -42,9 +66,9 @@ class ResidualBlock(nn.Module):
         return out
 
 # ResNet定义
-class NeuralNetwork(nn.Module):
+class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=10):
-        super(NeuralNetwork, self).__init__()
+        super(ResNet, self).__init__()
         self.in_channels = 16
         self.conv = conv3x3(3, 16)
         self.bn = nn.BatchNorm2d(16)
@@ -68,6 +92,7 @@ class NeuralNetwork(nn.Module):
             layers.append(block(out_channels, out_channels))
         return nn.Sequential(*layers)
 
+
     def forward(self, x):
         out = self.conv(x)
         out = self.bn(out)
@@ -81,20 +106,22 @@ class NeuralNetwork(nn.Module):
         return out
 
 
-
-
 def read_data():
-    # 这里可自行修改数据预处理，batch大小也可自行调整
-    # 保持本地训练的数据读取和这里一致
-    dataset_train = torchvision.datasets.CIFAR10(root='../data/exp03', train=True, download=True, transform=torchvision.transforms.ToTensor())
-    dataset_val = torchvision.datasets.CIFAR10(root='../data/exp03', train=False, download=False, transform=torchvision.transforms.ToTensor())
+
+    dataset_train = torchvision.datasets.CIFAR10(root='../data/exp03', train=True, download=True,
+                                                 transform=torchvision.transforms.ToTensor())
+    dataset_val = torchvision.datasets.CIFAR10(root='../data/exp03', train=False, download=True,
+                                               transform=torchvision.transforms.ToTensor())
     data_loader_train = DataLoader(dataset=dataset_train, batch_size=256, shuffle=True)
     data_loader_val = DataLoader(dataset=dataset_val, batch_size=256, shuffle=False)
     return dataset_train, dataset_val, data_loader_train, data_loader_val
 
+
 def main():
-    model = NeuralNetwork(ResidualBlock, [2, 2, 2]) # 若有参数则传入参数
+    model = ResNet(ResidualBlock, [2, 2, 2]).to('cpu')
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
-    model.load_state_dict(torch.load(parent_dir + '/pth/model.pth'))
+    model.load_state_dict(torch.load(parent_dir+'/pth/model.pth', map_location='cpu'))
+    #torch.load(model.state_dict(), 'pth/model.pth')
+    #torch.load_state_dict('pth/model.pth')
     return model
